@@ -1,0 +1,42 @@
+def main():
+    np.random.seed(100)
+    images_train_file_path = 'images_train_file_path.csv'
+    labels_train_file_path = 'labels_train_file_path.csv'
+    print("Reading training Dataset")
+    trainData, trainLabels = readData(images_train_file_path, labels_train_file_path)
+    trainLabels = one_hot_labels(trainLabels)
+    p = np.random.permutation(60000) #creates a randomized ordering of 60000 examples
+    trainData = trainData[p,:] #reorders the training data according to the permutation
+    trainLabels = trainLabels[p,:] #reorders the training data's associated labels according to the permutation
+
+    devData = trainData[0:10000,:] #first 10000 examples held out as development set
+    devLabels = trainLabels[0:10000,:] #as above
+    trainData = trainData[10000:,:] #remaining is to be used as the training set
+    trainLabels = trainLabels[10000:,:]
+
+    #normalizing the data; for ease of numerical computation
+    print("Normalizing the training and dev datasets")
+    mean = np.mean(trainData)
+    std = np.std(trainData)
+    trainData = (trainData - mean) / std
+    devData = (devData - mean) / std
+
+    images_test_file_path = 'images_test_file_path.csv'
+    labels_test_file_path = 'labels_test_file_path.csv'
+    print("Reading testing dataset")
+    testData, testLabels = readData(images_test_file_path, labels_test_file_path)
+    testLabels = one_hot_labels(testLabels)
+    testData = (testData - mean) / std
+	
+    print("Training NN without regularization")
+    params, training_loss, training_accuracy, dev_loss, dev_accuracy = nn_train(trainData, trainLabels, devData, devLabels, num_hidden=300, learning_rate=5, batch_size=1000, num_epoch=30, regularization_str=0)
+    print("NN training completed")
+
+    readyForTesting = True
+    if readyForTesting:
+        accuracy = nn_test(testData, testLabels, params)
+    print('Test accuracy: %f' % accuracy)
+    return params, training_loss, training_accuracy, dev_loss, dev_accuracy
+
+#run neural network
+params, training_loss, training_accuracy, dev_loss, dev_accuracy = main()
