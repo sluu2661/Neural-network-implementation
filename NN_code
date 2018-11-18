@@ -1,0 +1,160 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+"""
+Code for a single layer NN 
+the hidden layer has H hidden units while the output layer has K units
+each of the K units of the output layer tell us the probability of being labelled as class K
+activation function of the hidden layer is the sigmoid function
+activation function of the output layer is the softmax function
+"""
+
+def readData(images_file, labels_file):
+    x = np.loadtxt(images_file, delimiter=',')
+    y = np.loadtxt(labels_file, delimiter=',')
+    return x, y
+
+def softmax(x):
+    """
+    Compute softmax function for input. 
+    Use tricks from previous assignment to avoid overflow (THIS IS VERY IMPORTANT AS IT MAY PRODUCE NAN VALUES IF NOT MODIFIED!)
+
+    x is the matrix of input data of dimension : B x K
+    B - number of training examples in BATCH
+    K - number of classes in classification
+    """
+    #TO PREVENT OVERFLOW OF SOFTMAX, USE THAT FACT THAT SOFTMAX IS LINEAR INVARIANT
+    c = np.max(x, axis=1, keepdims=True)
+    numerator = np.exp(x-c) #matrix of size B x K
+    denominator = np.sum(numerator, axis=1, keepdims=True) #keepdims=True ensures it creates the appropriate 2D array
+                                                           #otherwise it will just give a 1D array 
+    s = numerator / denominator
+    return s
+
+def sigmoid(x):
+    """
+    Compute the sigmoid function for the input here.
+    Standard defn of sigmoid will not be numerically stable; this is due to the np.exp() not being able to handle large inputs 
+    need to have two different representations one for positive and negative values
+    """
+    #s = 1 / ( 1 + np.exp(-x) )
+    s = ( 1 + np.tanh(x / 2) ) / 2 #"modified sigmoid" helps avoid overflow; scaling factor of x helps gradient change of tanh
+    return s
+
+def forward_prop(data, labels, params):
+    """
+    return hidder layer, output(softmax) layer and loss
+    B - number of training examples in a BATCH
+    N - number of features for a single training example
+    H - number of hidden neurons/units in the hidden layer
+    K - number of classifications of the output layer
+    data - matrix of size B x N
+    labels - matrix of truth vectors of size B x K 
+    """
+    W1 = params['W1'] # hidden layer params; matrix of dim N x H
+    b1 = params['b1'] # hidden layer bias term; matrix of dim B x H
+    W2 = params['W2'] # output layer params; matrix of dim H x K
+    b2 = params['b2'] # output layer bias term; matrix of dim B x K
+    lamb = params['lambda'] 
+
+    ### YOUR CODE HERE
+    h = sigmoid(np.dot(data,W1) + b1) # matrix of size B x H
+    y = softmax(np.dot(h,W2) + b2) # matrix of size B x K
+    loss = (- ( np.sum(labels * (np.log(y + 1e-16))) ) / data.shape[0]) 
+    #+ lamb * (np.trace(np.dot(W1.T,W1)) + np.trace(np.dot(W2.T,W2)))
+    #added 1e-16 to avoid log(0) terms
+    ### END YOUR CODE
+    return h, y, loss
+
+def backward_prop(data, labels, params):
+    """
+    return gradient of parameters
+    """
+    W1 = params['W1']
+    b1 = params['b1']
+    W2 = params['W2']
+    b2 = params['b2']
+    lamb = params['lambda'] 
+
+    ### YOUR CODE HERE
+    # need to first do forward propagation to obtain numerics for hidden and output layers
+    h, y, loss = forward_prop(data, labels, params)
+
+    #formulas for partial derivatives
+    #output layer
+    delta2 = y - labels # derivative of softmax function wrt output layer inputs/ NEED TO PROVE FOR MYSELF, DERIVATIVE OF SOFTMAX
+    gradW2 = np.dot(h.T,delta2) #derivative of loss function wrt W2
+    gradb2 = np.sum(delta2,axis=0,keepdims=True) #derivative of loss function wrt b2
+    #hidden layer
+    delta1 = np.dot(delta2,W2.T) * (h*(1-h)) # derivative of sigmoid function wrt hidden layer inputs
+    gradW1 = np.dot(data.T,delta1)
+    gradb1 = np.sum(delta1,axis=0,keepdims=True)
+
+    if lamb != 0:
+        gradW1 +=  2 * lamb * W1
+        gradW2 +=  2 * lamb * W2
+
+    ### END YOUR CODE
+
+    grad = {}
+    grad['W1'] = gradW1 / data.shape[0]
+    grad['W2'] = gradW2 / data.shape[0]
+    grad['b1'] = gradb1 / data.shape[0]
+    grad['b2'] = gradb2 / data.shape[0]
+    #WHY DO I HAVE TO DIVIDE MY THE NUMBER OF TRAINING EXAMPLES IN BATCH????
+    #is it because we are training it over ALL training examples? YES, it is part of definition of loss function!!!
+
+    return grad
+
+def nn_train(trainData, trainLabels, devData, devLabels, num_hidden=300, learning_rate=5, batch_size=1000, num_epoch=30, regularization_str=0):
+    (m, n) = trainData.shape
+    params = {}
+    K = trainLabels.shape[1]
+
+    ### YOUR CODE HERE
+    
+    #initialize parameters for NN; weights are chosen from std norm dist, bias/intercept term chosen to be zeros
+    #since we are training in BATCHES, m = batch_size
+    params['W1'] = np.random.standard_normal((n,num_hidden))
+    params['b1'] = np.zeros((1,num_hidden)) #we keep as a row vector; numpy will add this to matrices as appropriate
+    params['W2'] = np.random.standard_normal((num_hidden, K))
+    params['b2'] = np.zeros((1,K))
+    params['lambda'] = regularization_str
+    
+    # NEED TO RUN THE LOOP TO ITERATE OVER EACH "EPOCH"
+    training_loss, training_accuracy, dev_loss, dev_accuracy = [], [], [], [] 
+
+    for i in range(num_epoch):
+        print("Epoch {0}: Learning...".format(i+1))
+        for j in range(m // batch_size): #need to use // to get integer value from division
+            batchData = trainData[j * batch_size : (j+1) * batch_size]
+            batchLabels = trainLabels[j * batch_size : (j+1) * batch_size]
+            grad = backward_prop(batchData, batchLabels, params)
+            params['W1'] -= learning_rate * grad['W1']
+            params['b1'] -= learning_rate * grad['b1']
+            params['W2'] -= learning_rate * grad['W2']
+            params['b2'] -= learning_rate * grad['b2']
+        h, y, loss = forward_prop(trainData, trainLabels, params)
+        training_loss.append(loss)
+        training_accuracy.append(compute_accuracy(y,trainLabels))
+        h, y, loss = forward_prop(devData, devLabels, params)
+        dev_loss.append(loss)
+        dev_accuracy.append(compute_accuracy(y,devLabels))
+
+
+    return params, training_loss, training_accuracy, dev_loss, dev_accuracy
+
+def nn_test(data, labels, params):
+    h, output, cost = forward_prop(data, labels, params)
+    accuracy = compute_accuracy(output, labels)
+    return accuracy
+
+def compute_accuracy(output, labels):
+    #this function computes accuracy of hypothesis against the truth_labels
+    accuracy = np.sum((np.argmax(output,axis=1) == np.argmax(labels,axis=1))) * 1. / labels.shape[0]
+    return accuracy
+
+def one_hot_labels(labels):
+    one_hot_labels = np.zeros((labels.size, 10))
+    one_hot_labels[np.arange(labels.size),labels.astype(int)] = 1
+    return one_hot_labels
